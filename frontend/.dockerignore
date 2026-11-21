@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-admin
+*.tsbuildinfo
+# Local dev settings stay out of images; production values come from .env.production / .env.admin.
+.env
+.env.local
+.env.*.local

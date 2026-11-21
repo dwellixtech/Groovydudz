@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gd-brand: 181 51 107;
+  --gd-accent: 224 121 63;
+  --gd-background: 251 248 244;
+  --gd-text: 42 31 36;
+  --gd-heading-font: "Fraunces", Georgia, serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.marquee-track {
+  animation: marquee var(--marquee-duration, 30s) linear infinite;
+}
+
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
+
+/* Highlight for the section selected in the theme editor preview. */
+[data-gd-selected="true"] {
+  outline: 2px solid #2c6ecb;
+  outline-offset: -2px;
+}
+
+[data-gd-preview] [data-section-id]:hover {
+  outline: 2px dashed #2c6ecb99;
+  outline-offset: -2px;
+  cursor: pointer;
+}
