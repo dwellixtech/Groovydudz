@@ -1,6 +1,6 @@
 import re
 from functools import lru_cache
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,7 +29,21 @@ def _normalize_async_database_url(value: str) -> str:
     scheme = parsed.scheme
     if scheme in {"postgres", "postgresql"} or scheme.startswith("postgresql+"):
         scheme = "postgresql+asyncpg"
-    return urlunsplit((scheme, parsed.netloc, parsed.path, parsed.query, parsed.fragment))
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    normalized_query: list[tuple[str, str]] = []
+    ssl_value = ""
+    for key, query_value in query_pairs:
+        if key == "sslmode":
+            ssl_value = query_value
+            continue
+        if key == "ssl":
+            ssl_value = query_value
+        normalized_query.append((key, query_value))
+    if ssl_value and not any(key == "ssl" for key, _ in normalized_query):
+        normalized_query.append(("ssl", ssl_value))
+    return urlunsplit(
+        (scheme, parsed.netloc, parsed.path, urlencode(normalized_query), parsed.fragment)
+    )
 
 
 def _database_url_from_parts(
