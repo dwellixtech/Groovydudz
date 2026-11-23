@@ -10,6 +10,7 @@ export type AdminData = {
   policies: Policy[];
   reload(): Promise<void>;
   toast(message: string, tone?: "success" | "error"): void;
+  signIn?(): void;
 };
 
 export const AdminContext = createContext<AdminData | null>(null);

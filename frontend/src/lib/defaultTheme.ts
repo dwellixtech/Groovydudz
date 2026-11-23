@@ -1,6 +1,6 @@
 import type { ThemeDocument } from "../types/theme";
 
-const cdn = (file: string) => `https://www.groovydudz.com/cdn/shop/files/${file}`;
+const cdn = (file: string) => `https://cdn.shopify.com/s/files/1/0742/4180/2318/files/${file}`;
 
 // Mirrors the current groovydudz.com homepage so the editor starts from familiar ground.
 // Collections are referenced by slug so the theme survives re-seeding.

@@ -39,7 +39,7 @@ function sectionTitle(section: Section) {
 }
 
 export function ThemeEditor() {
-  const { backend, toast } = useAdmin();
+  const { backend, toast, signIn } = useAdmin();
   const [state, setState] = useState<ThemeState | null>(null);
   const [theme, setTheme] = useState<ThemeDocument | null>(null);
   const [panel, setPanel] = useState<Panel>({ kind: "list" });
@@ -92,19 +92,24 @@ export function ThemeEditor() {
   const save = useCallback(
     async (publish: boolean) => {
       if (!theme) return;
+      if (publish && backend.mode === "demo") {
+        toast("Sign in to publish changes to the live storefront.", "error");
+        signIn?.();
+        return;
+      }
       setSaving(publish ? "publish" : "save");
       try {
         let next = await backend.saveTheme(theme);
         if (publish) next = await backend.publishTheme();
         setState(next);
-        toast(publish ? "Published! Your storefront is updated." : "Draft saved");
+        toast(publish ? "Published! Your storefront is updated." : backend.mode === "demo" ? "Demo draft saved in this browser" : "Draft saved");
       } catch (error) {
         toast(error instanceof Error ? error.message : "Could not save theme", "error");
       } finally {
         setSaving(null);
       }
     },
-    [backend, theme, toast],
+    [backend, signIn, theme, toast],
   );
 
   useEffect(() => {
@@ -152,8 +157,7 @@ export function ThemeEditor() {
         </button>
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-semibold">Home page</span>
-          {unpublished ? <Badge tone="warning">Unpublished changes</Badge> : <Badge tone="success">Live</Badge>}
-          {backend.mode === "demo" && <Badge tone="info">Demo · saved in this browser</Badge>}
+          {backend.mode === "demo" ? <Badge tone="info">Demo only</Badge> : unpublished ? <Badge tone="warning">Unpublished changes</Badge> : <Badge tone="success">Live</Badge>}
         </div>
         <div className="mx-auto hidden items-center rounded-lg bg-[#f1f1f1] p-0.5 md:flex">
           {(["desktop", "mobile"] as const).map((d) => (
@@ -167,11 +171,17 @@ export function ThemeEditor() {
             <Eye size={14} /> View store
           </Button>
           <Button onClick={() => save(false)} disabled={!dirty} loading={saving === "save"}>
-            {dirty ? "Save" : "Saved"}
+            {backend.mode === "demo" ? (dirty ? "Save demo" : "Demo saved") : dirty ? "Save" : "Saved"}
           </Button>
-          <Button variant="primary" onClick={() => save(true)} disabled={!unpublished} loading={saving === "publish"}>
-            Publish
-          </Button>
+          {backend.mode === "demo" ? (
+            <Button variant="primary" onClick={signIn}>
+              Sign in to publish
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => save(true)} disabled={!unpublished} loading={saving === "publish"}>
+              Publish
+            </Button>
+          )}
         </div>
       </header>
 

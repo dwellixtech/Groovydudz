@@ -74,7 +74,7 @@ export function AdminApp() {
 
   if (!backend) return <div className="grid h-screen place-items-center bg-admin-bg text-sm text-admin-muted">Loading admin…</div>;
 
-  const context = { backend, products, collections, policies, reload, toast };
+  const context = { backend, products, collections, policies, reload, toast, signIn: () => setSigningIn(true) };
   const parts = adminRouteParts(path);
 
   const toastStack = (
