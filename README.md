@@ -4,6 +4,8 @@ Production-oriented storefront and admin platform for GroovyDudz.
 
 **Deployment, live URLs and the manual setup checklist: see [DEPLOYMENT.md](DEPLOYMENT.md).**
 
+Current production targets use separate deployments for the storefront, admin portal and API.
+
 ## Stack
 
 - Frontend: React, TypeScript, Vite, Tailwind CSS
