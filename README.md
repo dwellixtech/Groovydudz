@@ -85,8 +85,8 @@ Checkout uses PayU India hosted checkout:
 
 ```bash
 # backend/.env
-API_HOST=https://api.groovydudz.com        # PayU posts back here
-STOREFRONT_URL=https://www.groovydudz.com  # shopper lands here afterwards
+API_HOST=https://api.groovydudz.com   # PayU posts back here
+STOREFRONT_URL=https://groovydudz.com  # shopper lands here afterwards
 PAYU_ENV=test                              # or production
 PAYU_MERCHANT_KEY=...
 PAYU_MERCHANT_SALT=...

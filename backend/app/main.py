@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, checkout, health, jobs, public, webhooks
+from app.api import admin, checkout, health, public, webhooks
 from app.core.config import settings
 
 
@@ -20,4 +20,3 @@ app.include_router(public.router, prefix="/public", tags=["public"])
 app.include_router(checkout.router, prefix="/checkout", tags=["checkout"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
-app.include_router(jobs.router, prefix="/jobs", tags=["jobs"], include_in_schema=False)

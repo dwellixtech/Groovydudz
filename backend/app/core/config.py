@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     delhivery_seller_name: str = "GroovyDudz"
     delhivery_seller_gst_tin: str | None = None
 
-    # Shared secret for scheduled jobs. Vercel Cron sends it as "Authorization: Bearer <CRON_SECRET>".
-    cron_secret: str | None = None
-
     aws_region: str = "ap-south-1"
     aws_s3_bucket: str | None = None
     aws_cloudfront_url: str | None = None

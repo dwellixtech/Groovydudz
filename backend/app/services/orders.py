@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -266,8 +266,9 @@ async def _settle_payment(
 ) -> str:
     """Ask PayU for the authoritative state of `txnid` and apply it. Returns the normalized status.
 
-    If PayU can't be reached the order stays pending; the webhook or the reconcile job settles it
-    later. A customer who really paid is never shown "failed" because our check timed out.
+    If PayU can't be reached the order stays pending until PayU sends another callback/webhook
+    or staff review it manually. A customer who really paid is never shown "failed" because our
+    check timed out.
     """
     callback = callback or {}
     try:
@@ -287,45 +288,6 @@ async def _settle_payment(
     else:
         _apply_payment_state(order, payment, payment_id, verified, status)
     return status
-
-
-async def reconcile_pending_payments(
-    db: AsyncSession, older_than_minutes: int = 15, abandon_after_minutes: int = 60, limit: int = 50
-) -> dict[str, int]:
-    """Settle PayU payments stuck in "created"/"pending" (closed tab, lost redirect, missed webhook).
-
-    Orders PayU has never heard of are expired as abandoned once `abandon_after_minutes` pass.
-    """
-    provider = PayUPaymentProvider.from_settings()
-    if not provider.is_configured:
-        return {"checked": 0}
-    now = datetime.now(UTC)
-    result = await db.execute(
-        select(Order, Payment)
-        .options(selectinload(Order.lines))
-        .join(Payment, Payment.order_id == Order.id)
-        .where(
-            Payment.provider == "payu",
-            Payment.status.in_(["created", "pending"]),
-            Order.payment_status == "pending",
-            Payment.created_at < now - timedelta(minutes=older_than_minutes),
-        )
-        .order_by(Payment.created_at)
-        .limit(limit)
-    )
-    counts = {"checked": 0, "paid": 0, "failed": 0, "cancelled": 0, "abandoned": 0, "pending": 0}
-    for order, payment in result.tuples():
-        counts["checked"] += 1
-        status = await _settle_payment(db, provider, order, payment, payment.provider_order_id or "")
-        if status == "not_found":
-            if payment.created_at < now - timedelta(minutes=abandon_after_minutes):
-                _apply_payment_state(order, payment, "", {"status": "abandoned"}, "abandoned")
-                status = "abandoned"
-            else:
-                status = "pending"
-        counts[status] = counts.get(status, 0) + 1
-    await db.commit()
-    return counts
 
 
 def _to_decimal(value: Any) -> Decimal | None:
