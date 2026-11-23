@@ -29,6 +29,16 @@ def _normalize_async_database_url(value: str) -> str:
     scheme = parsed.scheme
     if scheme in {"postgres", "postgresql"} or scheme.startswith("postgresql+"):
         scheme = "postgresql+asyncpg"
+    asyncpg_query_keys = {
+        "command_timeout",
+        "direct_tls",
+        "prepared_statement_cache_size",
+        "server_settings",
+        "ssl",
+        "statement_cache_size",
+        "target_session_attrs",
+        "timeout",
+    }
     query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
     normalized_query: list[tuple[str, str]] = []
     ssl_value = ""
@@ -38,7 +48,8 @@ def _normalize_async_database_url(value: str) -> str:
             continue
         if key == "ssl":
             ssl_value = query_value
-        normalized_query.append((key, query_value))
+        if key in asyncpg_query_keys:
+            normalized_query.append((key, query_value))
     if ssl_value and not any(key == "ssl" for key, _ in normalized_query):
         normalized_query.append(("ssl", ssl_value))
     return urlunsplit(
