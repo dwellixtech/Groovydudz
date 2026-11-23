@@ -24,24 +24,43 @@ async def _jwks() -> dict:
         return response.json()
 
 
+def _decode_with_secret(token: str) -> dict:
+    if not settings.supabase_jwt_secret:
+        raise JWTError("Supabase JWT secret is not configured")
+    return jwt.decode(
+        token,
+        settings.supabase_jwt_secret,
+        algorithms=["HS256"],
+        audience=settings.supabase_jwt_audience,
+        options={"verify_at_hash": False},
+    )
+
+
+async def _decode_with_jwks(token: str, header: dict) -> dict:
+    keys = (await _jwks()).get("keys", [])
+    key = next((item for item in keys if item.get("kid") == header.get("kid")), None)
+    if key is None:
+        raise JWTError("Signing key not found")
+    return jwt.decode(
+        token,
+        key,
+        algorithms=["RS256", "ES256"],
+        audience=settings.supabase_jwt_audience,
+        options={"verify_at_hash": False},
+    )
+
+
 async def require_user(authorization: str = Header(default="")) -> Principal:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
     token = authorization.removeprefix("Bearer ").strip()
     try:
         header = jwt.get_unverified_header(token)
-        keys = (await _jwks()).get("keys", [])
-        key = next((item for item in keys if item.get("kid") == header.get("kid")), None)
-        if key is None:
-            raise JWTError("Signing key not found")
-        claims = jwt.decode(
-            token,
-            key,
-            algorithms=["RS256", "ES256"],
-            audience=settings.supabase_jwt_audience,
-            options={"verify_at_hash": False},
-        )
-    except JWTError as exc:
+        if header.get("alg") == "HS256":
+            claims = _decode_with_secret(token)
+        else:
+            claims = await _decode_with_jwks(token, header)
+    except (JWTError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
     return Principal(user_id=UUID(claims["sub"]), email=claims.get("email"))
 

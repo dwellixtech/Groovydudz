@@ -48,11 +48,24 @@ function Loading() {
   );
 }
 
+function LoadError() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-canvas px-4 text-center font-body text-ink">
+      <div>
+        <h1 className="text-xl font-bold">Store temporarily unavailable</h1>
+        <p className="mt-2 text-sm text-ink/70">Please refresh the page in a moment.</p>
+      </div>
+    </div>
+  );
+}
+
 export function StorefrontApp() {
   const [data, setData] = useState<StorefrontData | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    loadStorefront().then(setData);
+    loadStorefront().then(setData, () => setFailed(true));
   }, []);
+  if (failed) return <LoadError />;
   if (!data) return <Loading />;
   return (
     <Themed data={data}>
@@ -64,11 +77,12 @@ export function StorefrontApp() {
 // Rendered at /preview inside the editor's iframe; the draft theme arrives via postMessage.
 export function PreviewApp() {
   const [data, setData] = useState<StorefrontData | null>(null);
+  const [failed, setFailed] = useState(false);
   const [draft, setDraft] = useState<ThemeDocument | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStorefront().then(setData);
+    loadStorefront().then(setData, () => setFailed(true));
   }, []);
 
   useEffect(() => {
@@ -77,7 +91,7 @@ export function PreviewApp() {
       if (event.origin !== parentOrigin || event.data?.type !== "gd:theme") return;
       setDraft(normalizeTheme(event.data.theme));
       setSelectedId(event.data.selectedId);
-      if (event.data.reload) loadStorefront(true).then(setData);
+      if (event.data.reload) loadStorefront(true).then(setData, () => setFailed(true));
     }
     window.addEventListener("message", onMessage);
     window.parent.postMessage({ type: "gd:ready" } satisfies PreviewMessage, parentOrigin);
@@ -89,6 +103,7 @@ export function PreviewApp() {
     document.querySelector(`[data-section-id="${CSS.escape(selectedId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedId]);
 
+  if (failed) return <LoadError />;
   if (!data) return <Loading />;
   const select = (id: string) => window.parent.postMessage({ type: "gd:select", id } satisfies PreviewMessage, previewParentOrigin());
   return (

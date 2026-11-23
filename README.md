@@ -52,9 +52,7 @@ npm install
 npm run dev
 ```
 
-The storefront runs at http://localhost:5173. The admin is a separate site: run `npm run dev:admin` (http://localhost:5174).
-
-Without Supabase keys the app runs in **demo mode**: the admin and storefront work end to end on a copy of the real catalog stored in the browser's localStorage (reset it from Admin → Online Store).
+The storefront runs at http://localhost:5173. The admin is a separate site: run `npm run dev:admin` (http://localhost:5174). Supabase and API environment variables are required; missing live configuration is shown as an error.
 
 ## Admin deployment
 
@@ -126,7 +124,7 @@ Admin → Online Store → Customize opens a Shopify-style theme editor:
 Admin → Policies manages storefront policy pages:
 
 - Shipping, return/refund, privacy, terms and cancellation pages are stored in `store_policies`.
-- The storefront serves them at `/pages/{slug}` and falls back to built-in defaults in demo mode.
+- The storefront serves them at `/pages/{slug}` and falls back to built-in defaults if policy records are missing.
 - Run migration `supabase/migrations/0003_store_policies.sql` before using policy editing in live mode.
 
 ## Notes

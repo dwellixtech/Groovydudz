@@ -352,7 +352,7 @@ export function TrackOrderForm() {
               name={method === "awb" ? "tracking_number" : "order_number"}
               required
               defaultValue={method === "awb" ? "" : initialOrder}
-              placeholder={method === "awb" ? "e.g. GDDEMO12345" : "e.g. GD-24A91F0C"}
+              placeholder={method === "awb" ? "e.g. 123456789012" : "e.g. GD-24A91F0C"}
               autoCapitalize="characters"
               className={fieldClass}
             />
@@ -377,7 +377,6 @@ export function TrackOrderForm() {
           {method === "awb"
             ? "For privacy, AWB lookup also needs the checkout email or mobile number."
             : "Your order number is in the confirmation email and on the payment confirmation screen."}
-          {mode === "demo" && " Demo: GD-24A91F0C, customer@example.com, +91 98765 43210, AWB GDDEMO12345."}
         </p>
         {error && (
           <div className="mt-4">

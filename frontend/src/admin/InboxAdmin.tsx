@@ -2,7 +2,6 @@ import { Download, Inbox, Mail, MessageCircle, Phone } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
-import { demoInbox } from "../lib/forms";
 import type { Inquiry, InquiryStatus, Subscriber } from "../types/api";
 import { useAdmin } from "./AdminContext";
 import { Badge, Button, Card, EmptyState, PageHeader } from "./ui";
@@ -38,8 +37,7 @@ function download(name: string, content: string) {
 }
 
 export function InboxPage() {
-  const { backend, toast } = useAdmin();
-  const source = backend.mode === "live" ? api : demoInbox;
+  const { toast } = useAdmin();
   const [tab, setTab] = useState<"messages" | "subscribers">("messages");
   const [filter, setFilter] = useState<"all" | InquiryStatus>("new");
   const [inquiries, setInquiries] = useState<Inquiry[] | null>(null);
@@ -48,7 +46,7 @@ export function InboxPage() {
 
   const load = useCallback(async () => {
     try {
-      const [i, s] = await Promise.all([source.inquiries(), source.subscribers()]);
+      const [i, s] = await Promise.all([api.inquiries(), api.subscribers()]);
       setInquiries(i);
       setSubscribers(s);
     } catch (error) {
@@ -56,7 +54,7 @@ export function InboxPage() {
       setInquiries([]);
       setSubscribers([]);
     }
-  }, [source, toast]);
+  }, [toast]);
 
   useEffect(() => {
     load();
@@ -74,7 +72,7 @@ export function InboxPage() {
 
   async function setStatus(inquiry: Inquiry, status: InquiryStatus) {
     try {
-      const updated = await source.updateInquiry(inquiry.id, status);
+      const updated = await api.updateInquiry(inquiry.id, status);
       setInquiries((list) => (list ?? []).map((i) => (i.id === inquiry.id ? updated : i)));
       toast(`Marked as ${statusLabel[status].toLowerCase()}`);
     } catch (error) {

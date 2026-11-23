@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_jwt_audience: str = "authenticated"
     supabase_jwks_url: str
+    supabase_jwt_secret: str | None = None
 
     default_store_slug: str = "groovydudz"
 

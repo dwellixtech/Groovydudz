@@ -1,21 +1,19 @@
 import { CheckCircle2, CreditCard, Inbox as InboxIcon, ExternalLink, FileText, FolderOpen, Home, LogOut, Mail, Menu, Package, PackageCheck, Paintbrush, Plug, RotateCcw, Store, Truck, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-import { api, supabase, supabaseConfigured } from "../lib/api";
+import { api, ApiError, supabase, supabaseConfigured } from "../lib/api";
 import { adminPath, adminRouteParts, storefrontPath } from "../lib/deployment";
 import { money, sized } from "../lib/format";
-import { demoBackend, resetDemo, resolveAdminBackend, type Backend } from "../lib/repo";
+import { liveBackend, type Backend } from "../lib/repo";
 import { Link, navigate, useLocation } from "../lib/router";
-import { sampleIntegrations, sampleOrders, sampleProviders } from "../lib/sampleData";
 import type { Collection, IntegrationProvider, Order, Policy, Product, StoreIntegration } from "../types/api";
-import { demoInbox } from "../lib/forms";
 import { AdminContext, useAdmin } from "./AdminContext";
 import { CollectionEditor, CollectionList } from "./CollectionsAdmin";
 import { PolicyEditor, PolicyList } from "./PoliciesAdmin";
 import { ProductEditor, ProductList } from "./ProductsAdmin";
 import { InboxPage } from "./InboxAdmin";
 import { ThemeEditor } from "./ThemeEditor";
-import { Badge, Button, Card, EmptyState, Input, Modal } from "./ui";
+import { Badge, Button, Card, EmptyState, Input } from "./ui";
 
 const nav = [
   { path: "", label: "Home", icon: Home, exact: true },
@@ -29,6 +27,16 @@ const nav = [
 ];
 
 type Toast = { id: number; message: string; tone: "success" | "error" };
+type AdminStatus = "checking" | "signed_out" | "ready" | "config_error" | "error";
+
+function adminErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return "You are signed in, but the API rejected the Supabase session. Check the API Supabase JWT settings.";
+    if (error.status === 403) return "You are signed in, but this account is not an active staff member for GroovyDudz.";
+    return error.message;
+  }
+  return error instanceof Error ? error.message : "Could not connect to the live admin API.";
+}
 
 export function AdminApp() {
   const { path } = useLocation();
@@ -38,7 +46,8 @@ export function AdminApp() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
+  const [status, setStatus] = useState<AdminStatus>("checking");
+  const [connectionError, setConnectionError] = useState("");
 
   const toast = useCallback((message: string, tone: "success" | "error" = "success") => {
     const id = Date.now() + Math.random();
@@ -47,12 +56,40 @@ export function AdminApp() {
   }, []);
 
   const connect = useCallback(async () => {
-    const next = await resolveAdminBackend();
-    const [p, c, pl] = await Promise.all([next.products(), next.collections(), next.policies()]);
-    setProducts(p);
-    setCollections(c);
-    setPolicies(pl);
-    setBackend(next);
+    setStatus("checking");
+    setConnectionError("");
+    if (!supabase || !supabaseConfigured) {
+      setBackend(null);
+      setProducts([]);
+      setCollections([]);
+      setPolicies([]);
+      setStatus("config_error");
+      return;
+    }
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      setBackend(null);
+      setProducts([]);
+      setCollections([]);
+      setPolicies([]);
+      setStatus("signed_out");
+      return;
+    }
+    try {
+      const [p, c, pl] = await Promise.all([liveBackend.products(), liveBackend.collections(), liveBackend.policies()]);
+      setProducts(p);
+      setCollections(c);
+      setPolicies(pl);
+      setBackend(liveBackend);
+      setStatus("ready");
+    } catch (error) {
+      setBackend(null);
+      setProducts([]);
+      setCollections([]);
+      setPolicies([]);
+      setConnectionError(adminErrorMessage(error));
+      setStatus("error");
+    }
   }, []);
 
   useEffect(() => {
@@ -65,17 +102,11 @@ export function AdminApp() {
   useEffect(() => setMenuOpen(false), [path]);
 
   const reload = useCallback(async () => {
-    if (!backend) return;
-    const [p, c, pl] = await Promise.all([backend.products(), backend.collections(), backend.policies()]);
+    const [p, c, pl] = await Promise.all([liveBackend.products(), liveBackend.collections(), liveBackend.policies()]);
     setProducts(p);
     setCollections(c);
     setPolicies(pl);
-  }, [backend]);
-
-  if (!backend) return <div className="grid h-screen place-items-center bg-admin-bg text-sm text-admin-muted">Loading admin…</div>;
-
-  const context = { backend, products, collections, policies, reload, toast, signIn: () => setSigningIn(true) };
-  const parts = adminRouteParts(path);
+  }, []);
 
   const toastStack = (
     <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
@@ -87,6 +118,18 @@ export function AdminApp() {
       ))}
     </div>
   );
+
+  if (!backend || status !== "ready") {
+    return (
+      <>
+        <AdminAuthScreen status={status} error={connectionError} onRetry={connect} />
+        {toastStack}
+      </>
+    );
+  }
+
+  const context = { backend, products, collections, policies, reload, toast };
+  const parts = adminRouteParts(path);
 
   // The theme editor takes over the full screen, like Shopify's.
   if (parts[0] === "themes") {
@@ -136,23 +179,15 @@ export function AdminApp() {
             GroovyDudz
           </Link>
           <div className="ml-auto flex items-center gap-2">
-            {backend.mode === "demo" ? (
-              <button onClick={() => setSigningIn(true)} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/15">
-                Demo mode · {supabaseConfigured ? "Sign in" : "Connect Supabase"}
-              </button>
-            ) : (
-              <span className="hidden items-center gap-1.5 text-xs text-white/70 sm:flex">
-                <span className="h-2 w-2 rounded-full bg-[#4ade80]" /> Live
-              </span>
-            )}
+            <span className="hidden items-center gap-1.5 text-xs text-white/70 sm:flex">
+              <span className="h-2 w-2 rounded-full bg-[#4ade80]" /> Live
+            </span>
             <a href={storefrontPath()} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-white/10">
               <ExternalLink size={14} /> <span className="hidden sm:inline">View store</span>
             </a>
-            {backend.mode === "live" && supabase && (
-              <button onClick={() => supabase?.auth.signOut()} aria-label="Sign out" className="grid h-8 w-8 place-items-center rounded-lg hover:bg-white/10">
-                <LogOut size={15} />
-              </button>
-            )}
+            <button onClick={() => supabase?.auth.signOut().then(() => connect())} aria-label="Sign out" className="grid h-8 w-8 place-items-center rounded-lg hover:bg-white/10">
+              <LogOut size={15} />
+            </button>
           </div>
         </header>
 
@@ -175,13 +210,47 @@ export function AdminApp() {
           <div className="mx-auto max-w-[1100px]">{page}</div>
         </main>
       </div>
-      {signingIn && <SignIn onClose={() => setSigningIn(false)} />}
       {toastStack}
     </AdminContext.Provider>
   );
 }
 
-function SignIn({ onClose }: { onClose(): void }) {
+function AdminAuthScreen({ status, error, onRetry }: { status: AdminStatus; error: string; onRetry(): Promise<void> }) {
+  return (
+    <div className="grid min-h-screen place-items-center bg-admin-bg px-4 font-body text-admin-text">
+      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-card">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-admin-accent text-xs font-bold text-white">G</span>
+          <div>
+            <h1 className="text-sm font-semibold">GroovyDudz Admin</h1>
+            <p className="text-xs text-admin-muted">Live store access only</p>
+          </div>
+        </div>
+        {status === "checking" ? (
+          <p className="text-[13px] text-admin-muted">Checking session…</p>
+        ) : status === "config_error" ? (
+          <div className="space-y-3 text-[13px] text-admin-muted">
+            <p>Supabase is not configured for this admin deployment.</p>
+            <Button onClick={onRetry}>Retry</Button>
+          </div>
+        ) : (
+          <>
+            {error && <p className="mb-3 rounded-lg bg-[#fedad9] px-3 py-2 text-[13px] text-[#8e1f0b]">{error}</p>}
+            <SignInForm onSuccess={onRetry} />
+            {status === "error" && (
+              <div className="mt-3 flex gap-2">
+                <Button onClick={onRetry}>Retry</Button>
+                <Button onClick={() => supabase?.auth.signOut().then(() => onRetry())}>Sign out</Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SignInForm({ onSuccess }: { onSuccess(): Promise<void> }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -194,45 +263,34 @@ function SignIn({ onClose }: { onClose(): void }) {
     const { error } = await supabase.auth.signInWithPassword({ email: String(form.get("email")).trim(), password: String(form.get("pin")) });
     setBusy(false);
     if (error) setMessage(error.message === "Invalid login credentials" ? "Incorrect email or PIN" : error.message);
-    else onClose();
+    else await onSuccess();
   }
 
   return (
-    <Modal title={supabaseConfigured ? "Sign in to your store" : "Connect Supabase"} onClose={onClose}>
-      {supabaseConfigured ? (
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <Input name="email" type="email" required placeholder="Staff email" aria-label="Email" />
-          <Input name="pin" type="password" required inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength={6} title="Enter your 6-digit PIN" placeholder="6-digit PIN" aria-label="PIN" />
-          {message && <p className="text-[13px] text-[#c5280c]">{message}</p>}
-          <Button variant="primary" type="submit" loading={busy}>
-            Sign in
-          </Button>
-        </form>
-      ) : (
-        <div className="space-y-3 text-[13px] text-admin-muted">
-          <p>You're in demo mode: everything works, and changes are saved in this browser only.</p>
-          <p>
-            To go live, set <code className="rounded bg-[#f1f1f1] px-1">VITE_SUPABASE_URL</code> and <code className="rounded bg-[#f1f1f1] px-1">VITE_SUPABASE_ANON_KEY</code> in <code className="rounded bg-[#f1f1f1] px-1">frontend/.env</code>, run the backend, then sign in with a staff account.
-          </p>
-        </div>
-      )}
-    </Modal>
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <Input name="email" type="email" required placeholder="Staff email" aria-label="Email" />
+      <Input name="pin" type="password" required inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength={6} title="Enter your 6-digit PIN" placeholder="6-digit PIN" aria-label="PIN" />
+      {message && <p className="text-[13px] text-[#c5280c]">{message}</p>}
+      <Button variant="primary" type="submit" loading={busy}>
+        Sign in
+      </Button>
+    </form>
   );
 }
 
 function Dashboard() {
-  const { products, collections, backend } = useAdmin();
+  const { products, collections } = useAdmin();
   const active = products.filter((p) => p.status === "active").length;
   const lowStock = products.filter((p) => (p.variants[0]?.inventory_quantity ?? 0) < 10);
   const noImages = products.filter((p) => !p.media.length);
   const noPrice = products.filter((p) => p.status === "active" && Number(p.variants[0]?.price ?? 0) <= 0);
   const [newMessages, setNewMessages] = useState<number | null>(null);
   useEffect(() => {
-    (backend.mode === "live" ? api.inquiries() : demoInbox.inquiries()).then(
+    api.inquiries().then(
       (list) => setNewMessages(list.filter((i) => i.status === "new").length),
       () => setNewMessages(null),
     );
-  }, [backend]);
+  }, []);
   const stats = [
     { label: "New messages", value: newMessages ?? "—", href: adminPath("inbox") },
     { label: "Active products", value: active, href: adminPath("products") },
@@ -242,11 +300,6 @@ function Dashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold">Welcome back</h1>
-      {backend.mode === "demo" && (
-        <div className="mb-4 rounded-xl border border-[#a4e8f2] bg-[#e0f7fa] px-4 py-3 text-[13px] text-[#00527c]">
-          <strong>Demo mode.</strong> You're editing a copy of the real GroovyDudz catalog stored in this browser. Changes show up on the storefront in this browser right away.
-        </div>
-      )}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((s) => (
           <Link key={s.label} href={s.href} className="rounded-xl bg-white p-4 shadow-card hover:bg-[#fafafa]">
@@ -298,9 +351,8 @@ function Dashboard() {
 }
 
 function OnlineStorePage() {
-  const { backend, toast } = useAdmin();
+  const { backend } = useAdmin();
   const [published, setPublished] = useState<string | null>(null);
-  const [confirmReset, setConfirmReset] = useState(false);
   useEffect(() => {
     backend.theme().then((t) => setPublished(t.published_at));
   }, [backend]);
@@ -329,37 +381,6 @@ function OnlineStorePage() {
           </div>
         </div>
       </Card>
-      {backend.mode === "demo" && (
-        <Card title="Demo data" className="mt-4">
-          <p className="mb-3 text-[13px] text-admin-muted">Throw away all demo edits in this browser and reload the original catalog and layout.</p>
-          <Button onClick={() => setConfirmReset(true)}>
-            <RotateCcw size={14} /> Reset demo data
-          </Button>
-        </Card>
-      )}
-      {confirmReset && (
-        <Modal
-          title="Reset demo data?"
-          onClose={() => setConfirmReset(false)}
-          footer={
-            <>
-              <Button onClick={() => setConfirmReset(false)}>Cancel</Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  resetDemo();
-                  toast("Demo data reset");
-                  window.location.reload();
-                }}
-              >
-                Reset
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm">All products, collections and theme changes made in demo mode will be lost.</p>
-        </Modal>
-      )}
     </>
   );
 }
@@ -454,13 +475,10 @@ function ShipmentCell({ order, live, onChange }: { order: Order; live: boolean; 
 }
 
 function OrdersPage() {
-  const { backend } = useAdmin();
-  const live = backend !== demoBackend;
   const [orders, setOrders] = useState<Order[] | null>(null);
   useEffect(() => {
-    if (backend === demoBackend) setOrders(sampleOrders);
-    else api.orders().then(setOrders, () => setOrders([]));
-  }, [backend]);
+    api.orders().then(setOrders, () => setOrders([]));
+  }, []);
   const updateOrder = (updated: Order) => setOrders((list) => list?.map((o) => (o.id === updated.id ? updated : o)) ?? null);
   const tone = (s: string) => (s === "paid" || s === "fulfilled" ? "success" : s === "failed" ? "critical" : s === "pending" || s === "unfulfilled" ? "warning" : "neutral");
   return (
@@ -499,7 +517,7 @@ function OrdersPage() {
                       <Badge tone={tone(o.fulfillment_status)}>{o.fulfillment_status}</Badge>
                     </td>
                     <td className="px-3 py-2.5">
-                      <ShipmentCell order={o} live={live} onChange={updateOrder} />
+                      <ShipmentCell order={o} live onChange={updateOrder} />
                     </td>
                     <td className="px-4 py-2.5 text-right">{money(o.grand_total)}</td>
                   </tr>
@@ -519,19 +537,18 @@ const providerCopy: Record<string, string> = {
   delhivery: "PIN code serviceability, shipment manifest, pickups, labels and tracking.",
 };
 
-function DelhiveryPickupSetting({ live }: { live: boolean }) {
+function DelhiveryPickupSetting() {
   const { toast } = useAdmin();
   const [value, setValue] = useState("");
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!live) return;
     api.delhiverySettings().then((config) => {
       setValue(config.pickup_location ?? "");
       setSaved(config.pickup_location ?? "");
     }, () => undefined);
-  }, [live]);
+  }, []);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -553,8 +570,8 @@ function DelhiveryPickupSetting({ live }: { live: boolean }) {
         Pickup location
       </label>
       <div className="flex gap-2">
-        <Input id="delhivery-pickup" value={value} onChange={(e) => setValue(e.target.value)} required maxLength={120} placeholder="Warehouse name in Delhivery One" disabled={!live} />
-        <Button type="submit" loading={busy} disabled={!live || !value.trim() || value.trim() === saved}>
+        <Input id="delhivery-pickup" value={value} onChange={(e) => setValue(e.target.value)} required maxLength={120} placeholder="Warehouse name in Delhivery One" />
+        <Button type="submit" loading={busy} disabled={!value.trim() || value.trim() === saved}>
           Save
         </Button>
       </div>
@@ -564,25 +581,19 @@ function DelhiveryPickupSetting({ live }: { live: boolean }) {
 }
 
 function IntegrationsPage() {
-  const { backend, toast } = useAdmin();
-  const live = backend !== demoBackend;
-  const [providers, setProviders] = useState<IntegrationProvider[]>(sampleProviders);
-  const [integrations, setIntegrations] = useState<StoreIntegration[]>(sampleIntegrations);
+  const { toast } = useAdmin();
+  const [providers, setProviders] = useState<IntegrationProvider[]>([]);
+  const [integrations, setIntegrations] = useState<StoreIntegration[]>([]);
 
   useEffect(() => {
-    if (!live) return;
     Promise.all([api.providers(), api.integrations()]).then(([p, i]) => {
       setProviders(p);
       setIntegrations(i);
     }, () => toast("Could not load integrations", "error"));
-  }, [live, toast]);
+  }, [toast]);
 
   async function install(provider: IntegrationProvider) {
     const payload = { provider_key: provider.key, kind: provider.kind, config: {}, secret_ref: `aws/secrets/groovydudz/${provider.key}` };
-    if (!live) {
-      setIntegrations([{ id: crypto.randomUUID(), status: "active", ...payload }, ...integrations]);
-      return;
-    }
     try {
       setIntegrations([await api.installIntegration(payload), ...integrations]);
       toast(`${provider.display_name} installed`);
@@ -613,7 +624,7 @@ function IntegrationsPage() {
                 <Badge tone={provider.configured ? "success" : "warning"}>{provider.configured ? "Configured" : "Needs keys"}</Badge>
               </div>
               <p className="mb-4 min-h-[40px] text-[13px] text-admin-muted">{providerCopy[provider.key] ?? ""}</p>
-              {provider.key === "delhivery" && <DelhiveryPickupSetting live={live} />}
+              {provider.key === "delhivery" && <DelhiveryPickupSetting />}
               <Button variant={installed ? "secondary" : "primary"} disabled={installed} onClick={() => install(provider)} className="w-full">
                 {installed ? "Installed" : "Install"}
               </Button>

@@ -28,7 +28,7 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-// The placeholder URL from .env.example counts as "not configured" so local previews run in demo mode.
+// The placeholder URL from .env.example counts as "not configured".
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes("your-project"));
 
 export const supabase: SupabaseClient | null = supabaseConfigured ? createClient(supabaseUrl, supabaseKey) : null;
