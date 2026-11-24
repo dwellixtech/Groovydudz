@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -18,10 +19,28 @@ from app.services.theme import get_published_theme
 router = APIRouter()
 
 
+class StorefrontOut(BaseModel):
+    products: list[ProductOut]
+    collections: list[CollectionOut]
+    policies: list[PolicyOut]
+    theme: dict
+
+
 @router.get("/products", response_model=list[ProductOut])
 async def products(db: AsyncSession = Depends(get_db)):
     store = await get_default_store(db)
     return await list_public_products(db, store)
+
+
+@router.get("/storefront", response_model=StorefrontOut)
+async def storefront(db: AsyncSession = Depends(get_db)):
+    store = await get_default_store(db)
+    return {
+        "products": await list_public_products(db, store),
+        "collections": await list_public_collections(db, store),
+        "policies": await list_public_policies(db, store),
+        "theme": await get_published_theme(db, store),
+    }
 
 
 @router.get("/products/{slug}", response_model=ProductOut)

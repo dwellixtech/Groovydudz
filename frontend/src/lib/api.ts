@@ -27,6 +27,8 @@ import type { ThemeDocument } from "../types/theme";
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+const PUBLIC_REQUEST_TIMEOUT_MS = 12000;
+const ADMIN_REQUEST_TIMEOUT_MS = 25000;
 
 // The placeholder URL from .env.example counts as "not configured".
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes("your-project"));
@@ -80,7 +82,8 @@ async function request<T>(path: string, init: RequestInit = {}, admin = false): 
     const auth = await authHeaders();
     Object.entries(auth).forEach(([key, value]) => headers.set(key, value));
   }
-  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(8000) });
+  const timeoutMs = admin ? ADMIN_REQUEST_TIMEOUT_MS : PUBLIC_REQUEST_TIMEOUT_MS;
+  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
   if (!response.ok) {
     throw new ApiError(response.status, await errorMessage(response));
   }
@@ -95,6 +98,8 @@ export const api = {
   publicCollections: () => request<Collection[]>("/public/collections"),
   publicPolicies: () => request<Policy[]>("/public/policies"),
   publicTheme: () => request<ThemeDocument>("/public/theme"),
+  publicStorefront: () =>
+    request<{ products: Product[]; collections: Collection[]; policies: Policy[]; theme: ThemeDocument }>("/public/storefront"),
   submitInquiry: (payload: InquiryInput) => request<{ id: string | null; created_at: string }>("/public/inquiries", json("POST", payload)),
   subscribe: (email: string, source: string) => request<{ subscribed: boolean }>("/public/newsletter", json("POST", { email, source })),
   trackOrder: (payload: TrackOrderRequest) => request<TrackedOrder>("/public/orders/track", json("POST", payload)),

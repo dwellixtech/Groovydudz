@@ -1,5 +1,5 @@
 import { CheckCircle2, CreditCard, Inbox as InboxIcon, ExternalLink, FileText, FolderOpen, Home, LogOut, Mail, Menu, Package, PackageCheck, Paintbrush, Plug, RotateCcw, Store, Truck, X, XCircle } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { api, ApiError, supabase, supabaseConfigured } from "../lib/api";
 import { adminPath, adminRouteParts, storefrontPath } from "../lib/deployment";
@@ -28,6 +28,7 @@ const nav = [
 
 type Toast = { id: number; message: string; tone: "success" | "error" };
 type AdminStatus = "checking" | "signed_out" | "ready" | "config_error" | "error";
+type ConnectOptions = { force?: boolean; showChecking?: boolean };
 
 function adminErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -48,6 +49,9 @@ export function AdminApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [status, setStatus] = useState<AdminStatus>("checking");
   const [connectionError, setConnectionError] = useState("");
+  const connectedToken = useRef<string | null>(null);
+  const connectionRun = useRef(0);
+  const connectionPromise = useRef<Promise<void> | null>(null);
 
   const toast = useCallback((message: string, tone: "success" | "error" = "success") => {
     const id = Date.now() + Math.random();
@@ -55,49 +59,81 @@ export function AdminApp() {
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500);
   }, []);
 
-  const connect = useCallback(async () => {
-    setStatus("checking");
-    setConnectionError("");
-    if (!supabase || !supabaseConfigured) {
-      setBackend(null);
-      setProducts([]);
-      setCollections([]);
-      setPolicies([]);
-      setStatus("config_error");
-      return;
-    }
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
-      setBackend(null);
-      setProducts([]);
-      setCollections([]);
-      setPolicies([]);
-      setStatus("signed_out");
-      return;
-    }
-    try {
-      const [p, c, pl] = await Promise.all([liveBackend.products(), liveBackend.collections(), liveBackend.policies()]);
-      setProducts(p);
-      setCollections(c);
-      setPolicies(pl);
-      setBackend(liveBackend);
-      setStatus("ready");
-    } catch (error) {
-      setBackend(null);
-      setProducts([]);
-      setCollections([]);
-      setPolicies([]);
-      setConnectionError(adminErrorMessage(error));
-      setStatus("error");
-    }
+  const clearAdminData = useCallback(() => {
+    setBackend(null);
+    setProducts([]);
+    setCollections([]);
+    setPolicies([]);
   }, []);
 
+  const connect = useCallback(async (options: ConnectOptions = {}) => {
+    const { force = false, showChecking = true } = options;
+    if (connectionPromise.current) {
+      await connectionPromise.current;
+      if (!force) return;
+    }
+
+    const run = ++connectionRun.current;
+    const task = (async () => {
+      if (showChecking) setStatus((current) => (current === "ready" ? current : "checking"));
+      setConnectionError("");
+      if (!supabase || !supabaseConfigured) {
+        connectedToken.current = null;
+        clearAdminData();
+        setStatus("config_error");
+        return;
+      }
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (!token) {
+        connectedToken.current = null;
+        clearAdminData();
+        setStatus("signed_out");
+        return;
+      }
+      if (!force && token === connectedToken.current) return;
+      try {
+        const [p, c, pl] = await Promise.all([liveBackend.products(), liveBackend.collections(), liveBackend.policies()]);
+        if (run !== connectionRun.current) return;
+        setProducts(p);
+        setCollections(c);
+        setPolicies(pl);
+        setBackend(liveBackend);
+        connectedToken.current = token;
+        setStatus("ready");
+      } catch (error) {
+        if (run !== connectionRun.current) return;
+        connectedToken.current = null;
+        clearAdminData();
+        setConnectionError(adminErrorMessage(error));
+        setStatus("error");
+      }
+    })();
+
+    connectionPromise.current = task;
+    try {
+      await task;
+    } finally {
+      if (connectionPromise.current === task) connectionPromise.current = null;
+    }
+  }, [clearAdminData]);
+
   useEffect(() => {
-    connect();
+    connect({ force: true });
     if (!supabase) return;
-    const { data } = supabase.auth.onAuthStateChange(() => connect());
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "INITIAL_SESSION") return;
+      if (event === "SIGNED_OUT") {
+        connectedToken.current = null;
+        clearAdminData();
+        setConnectionError("");
+        setStatus("signed_out");
+        return;
+      }
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") void connect({ showChecking: false });
+    });
     return () => data.subscription.unsubscribe();
-  }, [connect]);
+  }, [clearAdminData, connect]);
 
   useEffect(() => setMenuOpen(false), [path]);
 
@@ -122,7 +158,7 @@ export function AdminApp() {
   if (!backend || status !== "ready") {
     return (
       <>
-        <AdminAuthScreen status={status} error={connectionError} onRetry={connect} />
+        <AdminAuthScreen status={status} error={connectionError} onRetry={() => connect({ force: true })} />
         {toastStack}
       </>
     );

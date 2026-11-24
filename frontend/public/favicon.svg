@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="GroovyDudz">
+  <rect width="64" height="64" rx="14" fill="#fbf8f4" />
+  <path d="M7 19c7-5 13-7 20-7 8 0 13 3 18 2 5-1 8-4 12-1" fill="none" stroke="#078f95" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M15 20h8l-4 8z" fill="#f47a14" />
+  <path d="M28 16h8l-4 8z" fill="#cf0570" />
+  <path d="M43 18h8l-4 8z" fill="#f47a14" />
+  <circle cx="12" cy="39" r="3.5" fill="#cf0570" />
+  <circle cx="52" cy="41" r="3.5" fill="#078f95" />
+  <text x="32" y="45" text-anchor="middle" font-family="Arial Rounded MT Bold, Inter, Arial, sans-serif" font-size="25" font-weight="900" letter-spacing="-1" fill="#078f95">GD</text>
+  <path d="M42 10c3 1 5 4 5 7" fill="none" stroke="#f47a14" stroke-width="3.4" stroke-linecap="round" />
+  <path d="M22 10c-3 1-5 4-5 7" fill="none" stroke="#cf0570" stroke-width="3.4" stroke-linecap="round" />
+</svg>

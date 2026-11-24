@@ -34,6 +34,10 @@ export type Backend = {
 };
 
 export type StorefrontData = { mode: Mode; products: Product[]; collections: Collection[]; policies: Policy[]; theme: ThemeDocument };
+type StorefrontPayload = Omit<StorefrontData, "mode">;
+
+const STOREFRONT_CACHE_KEY = "gd:storefront:v1";
+const STOREFRONT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function isTheme(value: unknown): value is ThemeDocument {
   return Boolean(value && typeof value === "object" && Array.isArray((value as ThemeDocument).sections) && (value as ThemeDocument).settings);
@@ -136,14 +140,57 @@ export const liveBackend: Backend = {
   },
 };
 
-export async function loadStorefront(_fresh = false): Promise<StorefrontData> {
-  const [products, collections, policies] = await Promise.all([
+function toStorefrontData(payload: StorefrontPayload): StorefrontData {
+  return {
+    mode: "live",
+    products: payload.products,
+    collections: payload.collections,
+    policies: payload.policies,
+    theme: normalizeTheme(payload.theme),
+  };
+}
+
+export function cachedStorefront(): StorefrontData | null {
+  try {
+    const raw = sessionStorage.getItem(STOREFRONT_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { savedAt?: number; data?: StorefrontData };
+    if (!cached.savedAt || Date.now() - cached.savedAt > STOREFRONT_CACHE_TTL_MS) return null;
+    const data = cached.data;
+    if (!data || !Array.isArray(data.products) || !Array.isArray(data.collections) || !Array.isArray(data.policies) || !isTheme(data.theme)) return null;
+    return { ...data, mode: "live", theme: normalizeTheme(data.theme) };
+  } catch {
+    return null;
+  }
+}
+
+function cacheStorefront(data: StorefrontData) {
+  try {
+    sessionStorage.setItem(STOREFRONT_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // Storage can be disabled or full; the network result is still valid.
+  }
+}
+
+async function loadStorefrontFallback(): Promise<StorefrontData> {
+  const [products, collections, policies, theme] = await Promise.all([
     api.publicProducts(),
     api.publicCollections(),
     api.publicPolicies().catch(() => structuredClone(defaultPolicies)),
+    api.publicTheme().then(normalizeTheme, () => structuredClone(defaultTheme)),
   ]);
-  const theme = await api.publicTheme().then(normalizeTheme, () => structuredClone(defaultTheme));
   return { mode: "live", products, collections, policies, theme };
+}
+
+export async function loadStorefront(fresh = false): Promise<StorefrontData> {
+  if (!fresh) {
+    const cached = cachedStorefront();
+    if (cached) return cached;
+  }
+
+  const data = await api.publicStorefront().then(toStorefrontData, loadStorefrontFallback);
+  cacheStorefront(data);
+  return data;
 }
 
 // Uploads go to the Supabase "media" bucket.

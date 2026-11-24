@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { CartProvider } from "../lib/cart";
 import { previewParentOrigin } from "../lib/deployment";
-import { loadStorefront, normalizeTheme, type StorefrontData } from "../lib/repo";
+import { cachedStorefront, loadStorefront, normalizeTheme, type StorefrontData } from "../lib/repo";
 import { useLocation } from "../lib/router";
 import { useThemeStyle } from "../lib/themeStyle";
 import type { ThemeDocument } from "../types/theme";
@@ -60,10 +60,23 @@ function LoadError() {
 }
 
 export function StorefrontApp() {
-  const [data, setData] = useState<StorefrontData | null>(null);
+  const [data, setData] = useState<StorefrontData | null>(() => cachedStorefront());
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    loadStorefront().then(setData, () => setFailed(true));
+    let active = true;
+    loadStorefront(Boolean(data)).then(
+      (fresh) => {
+        if (!active) return;
+        setData(fresh);
+        setFailed(false);
+      },
+      () => {
+        if (active && !data) setFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
   }, []);
   if (failed) return <LoadError />;
   if (!data) return <Loading />;
